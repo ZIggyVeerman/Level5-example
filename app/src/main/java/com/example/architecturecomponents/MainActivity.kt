@@ -7,20 +7,18 @@ import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
 import android.view.Menu
 import android.view.MenuItem
+import androidx.activity.viewModels
+import androidx.lifecycle.Observer
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.architecturecomponents.adapters.ReminderAdapter
 import com.example.architecturecomponents.models.Reminder
-import com.example.architecturecomponents.repositories.ReminderRepository
+import com.example.architecturecomponents.vm.MainActivityViewModel
 
 import kotlinx.android.synthetic.main.activity_main.*
 import kotlinx.android.synthetic.main.content_main.*
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 const val ADD_REMINDER_REQUEST_CODE = 100
 
@@ -28,15 +26,12 @@ class MainActivity : AppCompatActivity() {
 
   private lateinit var reminders: ArrayList<Reminder>
   private lateinit var reminderAdapter: ReminderAdapter
-  private lateinit var reminderRepository: ReminderRepository
-
+  private val viewModel: MainActivityViewModel by viewModels()
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     setContentView(R.layout.activity_main)
     setSupportActionBar(toolbar)
-
-    reminderRepository = ReminderRepository(this)
 
     reminders = arrayListOf()
 
@@ -46,8 +41,8 @@ class MainActivity : AppCompatActivity() {
     fab.setOnClickListener {
       startAddActivity()
     }
-
     initViews()
+    observeViewModel()
   }
 
   private fun startAddActivity() {
@@ -66,8 +61,16 @@ class MainActivity : AppCompatActivity() {
       )
     )
     createItemTouchHelper().attachToRecyclerView(rvReminders)
-    getRemindersFromDatabase()
   }
+  private fun observeViewModel() {
+    viewModel.reminders.observe(this, Observer { reminders ->
+      this@MainActivity.reminders.clear()
+      this@MainActivity.reminders.addAll(reminders)
+      reminderAdapter.notifyDataSetChanged()
+    })
+
+  }
+
 
   override fun onCreateOptionsMenu(menu: Menu): Boolean {
     // Inflate the menu; this adds items to the action bar if it is present.
@@ -85,18 +88,6 @@ class MainActivity : AppCompatActivity() {
     }
   }
 
-  private fun getRemindersFromDatabase() {
-    CoroutineScope(Dispatchers.Main).launch {
-      val reminders = withContext(Dispatchers.IO) {
-        reminderRepository.getAllReminders()
-      }
-      this@MainActivity.reminders.clear()
-      this@MainActivity.reminders.addAll(reminders)
-      reminderAdapter.notifyDataSetChanged()
-    }
-  }
-
-
   override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
     super.onActivityResult(requestCode, resultCode, data)
 
@@ -106,12 +97,7 @@ class MainActivity : AppCompatActivity() {
           data?.let { saveData ->
             val reminder = saveData.getParcelableExtra<Reminder>(EXTRA_REMINDER)
             reminder?.let { saveReminder ->
-              CoroutineScope(Dispatchers.Main).launch {
-                withContext(Dispatchers.IO) {
-                  reminderRepository.insertReminder(saveReminder)
-                }
-                getRemindersFromDatabase()
-              }
+              viewModel.insertReminder(saveReminder)
             } ?: run {
               Log.e("saveData", "Something went wrong with saving the data from saveReminder");
             }
@@ -146,12 +132,7 @@ class MainActivity : AppCompatActivity() {
         val position = viewHolder.adapterPosition
         val reminderToDelete = reminders[position]
 
-        CoroutineScope(Dispatchers.Main).launch {
-          withContext(Dispatchers.IO) {
-            reminderRepository.deleteReminder(reminderToDelete)
-          }
-          getRemindersFromDatabase()
-        }
+        viewModel.deleteReminder(reminderToDelete)
       }
     }
     return ItemTouchHelper(callback)
